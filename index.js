@@ -177,27 +177,31 @@ export default {
 
     // ── Listings: create ───────────────────────────────────────────────────
     if (url.pathname === '/listings' && request.method === 'POST') {
-      const session = await getSession(request, env);
-      if (!session) return err('Unauthorised', 401);
+    const body = await request.json();
+    const { armourType, setName, pieces, cat, catLabel, price, proof, notes, ign: bodyIgn } = body;
 
-      const body = await request.json();
-      const { armourType, setName, pieces, cat, catLabel, price, proof, notes } = body;
-
-      if (!armourType || !pieces?.length || !price || price <= 0) {
+    if (!armourType || !pieces?.length || !price || price <= 0) {
         return err('Missing required fields');
-      }
+    }
 
-      const id = generateId();
-      const now = Date.now();
+    // Auth is optional — verified session gets UUID attached, unverified uses body IGN
+    const session = await getSession(request, env);
+    const finalIgn = session?.username || bodyIgn;
+    const finalUuid = session?.uuid || null;
 
-      await env.DB.prepare(`
+    if (!finalIgn) return err('IGN required');
+
+    const id = generateId();
+    const now = Date.now();
+
+    await env.DB.prepare(`
         INSERT INTO listings
-          (id, uuid, ign, armour_type, set_name, pieces, cat, cat_label, price, proof, notes, status, ts)
+        (id, uuid, ign, armour_type, set_name, pieces, cat, cat_label, price, proof, notes, status, ts)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
-      `).bind(
+    `).bind(
         id,
-        session.uuid,
-        session.username,
+        finalUuid,
+        finalIgn,
         armourType,
         setName || '',
         JSON.stringify(pieces),
@@ -207,9 +211,9 @@ export default {
         proof || '',
         notes || '',
         now,
-      ).run();
+    ).run();
 
-      return json({ id, ok: true }, 201);
+    return json({ id, ok: true }, 201);
     }
 
     // ── Listings: mark sold ────────────────────────────────────────────────
