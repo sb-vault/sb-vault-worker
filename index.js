@@ -165,14 +165,14 @@ export default {
       });
     }
 
-    // ── Listings: stats ────────────────────────────────────────────────────
+    // ── Listings: stats ────────────────────────────────────────────────────────────────────
     if (url.pathname === '/listings/stats' && request.method === 'GET') {
-      const [active, sellers, sold] = await Promise.all([
-        env.DB.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'active'`).first(),
-        env.DB.prepare(`SELECT COUNT(DISTINCT uuid) as n FROM listings WHERE status = 'active'`).first(),
-        env.DB.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'sold'`).first(),
-      ]);
-      return json({ active: active.n, sellers: sellers.n, sold: sold.n });
+        const [active, users, sold] = await Promise.all([
+            env.DB.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'active'`).first(),
+            env.DB.prepare(`SELECT COUNT(*) as n FROM users`).first(),
+            env.DB.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'sold'`).first(),
+        ]);
+        return json({ active: active.n, users: users.n, sold: sold.n });
     }
 
     // ── Listings: create ───────────────────────────────────────────────────
