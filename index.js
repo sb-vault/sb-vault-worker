@@ -1,3 +1,5 @@
+// cloudflare database
+
 const CORS = {
   'Access-Control-Allow-Origin': 'https://sb-vault.github.io',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
