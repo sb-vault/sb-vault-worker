@@ -307,6 +307,172 @@ export default {
       return json({ offers: results });
     }
 
+    // ── Image upload ───────────────────────────────────────────────────────
+    if (url.pathname === '/images/upload' && request.method === 'POST') {
+    const session = await getSession(request, env);
+    if (!session) return err('Unauthorised', 401);
+
+    const formData = await request.formData();
+    const file = formData.get('file');
+    if (!file) return err('No file provided');
+
+    const ext = file.type === 'image/png' ? 'png' : file.type === 'image/gif' ? 'gif' : 'jpg';
+    const key = `chat/${generateId()}.${ext}`;
+
+    await env.IMAGES.put(key, file.stream(), {
+        httpMetadata: { contentType: file.type },
+    });
+
+    return json({ url: `https://pub-${env.R2_PUBLIC_URL}.r2.dev/${key}` });
+    }
+
+    // ── Chats: get all for current user ───────────────────────────────────
+    if (url.pathname === '/chats' && request.method === 'GET') {
+    const session = await getSession(request, env);
+    if (!session) return err('Unauthorised', 401);
+
+    const { results } = await env.DB.prepare(`
+        SELECT c.*, 
+        l.armour_type, l.set_name,
+        (SELECT COUNT(*) FROM messages m WHERE m.chat_id = c.id) as message_count,
+        (SELECT m2.ts FROM messages m2 WHERE m2.chat_id = c.id ORDER BY m2.ts DESC LIMIT 1) as last_ts,
+        (SELECT m3.content FROM messages m3 WHERE m3.chat_id = c.id ORDER BY m3.ts DESC LIMIT 1) as last_message
+        FROM chats c
+        LEFT JOIN listings l ON c.listing_id = l.id
+        WHERE c.seller_uuid = ? OR c.buyer_uuid = ?
+        ORDER BY COALESCE(last_ts, c.created_at) DESC
+    `).bind(session.uuid, session.uuid).all();
+
+    return json({ chats: results });
+    }
+
+    // ── Chats: get single chat + messages ─────────────────────────────────
+    if (url.pathname.match(/^\/chats\/[a-f0-9]+$/) && request.method === 'GET') {
+    const session = await getSession(request, env);
+    if (!session) return err('Unauthorised', 401);
+
+    const chatId = url.pathname.split('/')[2];
+    const chat = await env.DB.prepare(
+        `SELECT c.*, l.armour_type, l.set_name, l.pieces, l.price
+        FROM chats c LEFT JOIN listings l ON c.listing_id = l.id
+        WHERE c.id = ?`
+    ).bind(chatId).first();
+
+    if (!chat) return err('Not found', 404);
+    if (chat.seller_uuid !== session.uuid && chat.buyer_uuid !== session.uuid) {
+        return err('Forbidden', 403);
+    }
+
+    const { results: messages } = await env.DB.prepare(
+        `SELECT * FROM messages WHERE chat_id = ? ORDER BY ts ASC`
+    ).bind(chatId).all();
+
+    return json({ chat, messages });
+    }
+
+    // ── Chats: send message ────────────────────────────────────────────────
+    if (url.pathname.match(/^\/chats\/[a-f0-9]+\/messages$/) && request.method === 'POST') {
+    const session = await getSession(request, env);
+    if (!session) return err('Unauthorised', 401);
+
+    const chatId = url.pathname.split('/')[2];
+    const chat = await env.DB.prepare(
+        `SELECT * FROM chats WHERE id = ?`
+    ).bind(chatId).first();
+
+    if (!chat) return err('Not found', 404);
+    if (chat.seller_uuid !== session.uuid && chat.buyer_uuid !== session.uuid) {
+        return err('Forbidden', 403);
+    }
+
+    const body = await request.json();
+    const { content, image_url } = body;
+
+    // Only seller can send images
+    if (image_url && chat.seller_uuid !== session.uuid) {
+        return err('Only the seller can send images', 403);
+    }
+
+    if (!content && !image_url) return err('Message cannot be empty');
+
+    const id = generateId();
+    await env.DB.prepare(`
+        INSERT INTO messages (id, chat_id, sender_uuid, sender_ign, content, image_url, ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(id, chatId, session.uuid, session.username, content || null, image_url || null, Date.now()).run();
+
+    return json({ id, ok: true }, 201);
+    }
+
+    // ── Offers: create (also creates chat) ────────────────────────────────
+    if (url.pathname === '/offers' && request.method === 'POST') {
+    const body = await request.json();
+    const { listingId, buyerIgn, amount, message } = body;
+
+    if (!listingId || !buyerIgn || !amount) return err('Missing required fields');
+
+    const listing = await env.DB.prepare(
+        `SELECT * FROM listings WHERE id = ? AND status = 'active'`
+    ).bind(listingId).first();
+    if (!listing) return err('Listing not found', 404);
+
+    const session = await getSession(request, env);
+    const offerId = generateId();
+    const chatId = generateId();
+    const now = Date.now();
+
+    // Create offer
+    await env.DB.prepare(`
+        INSERT INTO offers (id, listing_id, buyer_uuid, buyer_ign, amount, message, ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(offerId, listingId, session?.uuid || null, buyerIgn, amount, message || '', now).run();
+
+    // Create chat automatically
+    await env.DB.prepare(`
+        INSERT INTO chats (id, listing_id, seller_uuid, buyer_uuid, buyer_ign, offer_amount, offer_message, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(chatId, listingId, listing.uuid, session?.uuid || null, buyerIgn, amount, message || '', now).run();
+
+    // Pin offer as first message
+    await env.DB.prepare(`
+        INSERT INTO messages (id, chat_id, sender_uuid, sender_ign, content, image_url, ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(generateId(), chatId, session?.uuid || buyerIgn, buyerIgn,
+        `__offer__:${amount}:${message || ''}`, null, now).run();
+
+    return json({ offerId, chatId, ok: true }, 201);
+    }
+
+    // ── R2: serve images ───────────────────────────────────────────────────
+    if (url.pathname.startsWith('/images/') && request.method === 'GET') {
+    const key = url.pathname.slice(1); // remove leading /
+    const obj = await env.IMAGES.get(key);
+    if (!obj) return err('Not found', 404);
+    return new Response(obj.body, {
+        headers: {
+        'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+        'Cache-Control': 'public, max-age=31536000',
+        ...CORS,
+        },
+    });
+    }
+
+    // ── Chats: unread count ────────────────────────────────────────────────
+    if (url.pathname === '/chats/unread' && request.method === 'GET') {
+    const session = await getSession(request, env);
+    if (!session) return json({ count: 0 });
+
+    // Count chats with messages from the other party that are newer than last seen
+    // Simple version: count total chats user is part of
+    const result = await env.DB.prepare(`
+        SELECT COUNT(*) as n FROM chats
+        WHERE seller_uuid = ? OR buyer_uuid = ?
+    `).bind(session.uuid, session.uuid).first();
+
+    return json({ count: result.n });
+    }
+
+    
     return err('Not found', 404);
   },
 };
