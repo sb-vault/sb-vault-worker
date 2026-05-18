@@ -256,37 +256,6 @@ export default {
       return json({ ok: true });
     }
 
-    // ── Offers: create ─────────────────────────────────────────────────────
-    if (url.pathname === '/offers' && request.method === 'POST') {
-      const body = await request.json();
-      const { listingId, buyerIgn, amount, message } = body;
-
-      if (!listingId || !buyerIgn || !amount) return err('Missing required fields');
-
-      const listing = await env.DB.prepare(
-        `SELECT id FROM listings WHERE id = ? AND status = 'active'`
-      ).bind(listingId).first();
-      if (!listing) return err('Listing not found', 404);
-
-      const session = await getSession(request, env);
-      const id = generateId();
-
-      await env.DB.prepare(`
-        INSERT INTO offers (id, listing_id, buyer_uuid, buyer_ign, amount, message, ts)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        id,
-        listingId,
-        session?.uuid || null,
-        buyerIgn,
-        amount,
-        message || '',
-        Date.now(),
-      ).run();
-
-      return json({ id, ok: true }, 201);
-    }
-
     // ── Offers: get for listing (owner only) ───────────────────────────────
     if (url.pathname.match(/^\/offers\/[a-f0-9]+$/) && request.method === 'GET') {
       const session = await getSession(request, env);
@@ -429,9 +398,9 @@ export default {
 
     // Create chat automatically
     await env.DB.prepare(`
-        INSERT INTO chats (id, listing_id, seller_uuid, buyer_uuid, buyer_ign, offer_amount, offer_message, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(chatId, listingId, listing.uuid, session?.uuid || null, buyerIgn, amount, message || '', now).run();
+        INSERT INTO chats (id, listing_id, seller_uuid, seller_ign, buyer_uuid, buyer_ign, offer_amount, offer_message, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(chatId, listingId, listing.uuid, listing.ign, session?.uuid || null, buyerIgn, amount, message || '', now).run();
 
     // Pin offer as first message
     await env.DB.prepare(`
