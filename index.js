@@ -167,12 +167,13 @@ export default {
 
     // ── Listings: stats ────────────────────────────────────────────────────────────────────
     if (url.pathname === '/listings/stats' && request.method === 'GET') {
-        const [active, users, sold] = await Promise.all([
-            env.DB.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'active'`).first(),
-            env.DB.prepare(`SELECT COUNT(*) as n FROM users`).first(),
-            env.DB.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'sold'`).first(),
-        ]);
-        return json({ active: active.n, users: users.n, sold: sold.n });
+    const [active, users, sold, messages] = await Promise.all([
+        env.DB.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'active'`).first(),
+        env.DB.prepare(`SELECT COUNT(*) as n FROM users`).first(),
+        env.DB.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'sold'`).first(),
+        env.DB.prepare(`SELECT SUM(messages_sent) as n FROM users`).first(),
+    ]);
+    return json({ active: active.n, users: users.n, sold: sold.n, messages: messages.n || 0 });
     }
 
     // ── Listings: create ───────────────────────────────────────────────────
@@ -370,6 +371,11 @@ export default {
         VALUES (?, ?, ?, ?, ?, ?, ?)
     `).bind(id, chatId, session.uuid, session.username, content || null, image_url || null, Date.now()).run();
 
+    // Increment user's message counter
+    await env.DB.prepare(
+    `UPDATE users SET messages_sent = messages_sent + 1 WHERE uuid = ?`
+    ).bind(session.uuid).run();
+
     return json({ id, ok: true }, 201);
     }
 
@@ -441,7 +447,23 @@ export default {
     return json({ count: result.n });
     }
 
-    
+    // ── Chats: archive ─────────────────────────────────────────────────────
+    if (url.pathname.match(/^\/chats\/[a-f0-9]+\/archive$/) && request.method === 'PUT') {
+    const session = await getSession(request, env);
+    if (!session) return err('Unauthorised', 401);
+
+    const chatId = url.pathname.split('/')[2];
+    const chat = await env.DB.prepare(`SELECT * FROM chats WHERE id = ?`).bind(chatId).first();
+    if (!chat) return err('Not found', 404);
+    if (chat.seller_uuid !== session.uuid && chat.buyer_uuid !== session.uuid) return err('Forbidden', 403);
+
+    // Add archived_by column if needed, or just mark with a status
+    const field = chat.seller_uuid === session.uuid ? 'archived_seller' : 'archived_buyer';
+    await env.DB.prepare(`UPDATE chats SET ${field} = 1 WHERE id = ?`).bind(chatId).run();
+
+    return json({ ok: true });
+    }
+
     return err('Not found', 404);
   },
 };
