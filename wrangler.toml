@@ -17,3 +17,7 @@ MCID_REDIRECT_URI = "https://sb-vault.github.io/"
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "sb-vault-images"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
