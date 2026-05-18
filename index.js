@@ -64,7 +64,7 @@ export default {
       });
 
       const tokens = await tokenRes.json();
-      if (!tokens.access_token) return err('Token exchange failed');
+      if (!tokens.access_token) return err('Token exchange failed: ' + JSON.stringify(tokens));
 
       const profileRes = await fetch('https://mc-id.com/api/auth/oauth2/userinfo', {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
