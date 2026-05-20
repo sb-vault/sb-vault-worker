@@ -347,19 +347,37 @@ export default {
       return json({ id, ok: true }, 201);
     }
 
-    // ── Chats: archive (close) ─────────────────────────────────────────
+    // ── Chats: archive (close) ─────────────────────────────────────────────
     if (url.pathname.match(/^\/chats\/[a-f0-9]+\/archive$/) && request.method === 'PUT') {
       const session = await getSession(request, env);
       if (!session) return err('Unauthorised', 401);
-
       const chatId = url.pathname.split('/')[2];
       const chat = await env.DB.prepare(`SELECT * FROM chats WHERE id = ?`).bind(chatId).first();
       if (!chat) return err('Not found', 404);
       if (chat.seller_uuid !== session.uuid && chat.buyer_uuid !== session.uuid) return err('Forbidden', 403);
 
-      const field = chat.seller_uuid === session.uuid ? 'archived_seller' : 'archived_buyer';
-      await env.DB.prepare(`UPDATE chats SET ${field} = 1 WHERE id = ?`).bind(chatId).run();
+      let body = {};
+      try { body = await request.json(); } catch(e) {}
 
+      if (body.both) {
+        await env.DB.prepare(`UPDATE chats SET archived_seller = 1, archived_buyer = 1 WHERE id = ?`).bind(chatId).run();
+      } else {
+        const field = chat.seller_uuid === session.uuid ? 'archived_seller' : 'archived_buyer';
+        await env.DB.prepare(`UPDATE chats SET ${field} = 1 WHERE id = ?`).bind(chatId).run();
+      }
+      return json({ ok: true });
+    }
+
+    // ── Chats: restore ─────────────────────────────────────────────────────
+    if (url.pathname.match(/^\/chats\/[a-f0-9]+\/restore$/) && request.method === 'PUT') {
+      const session = await getSession(request, env);
+      if (!session) return err('Unauthorised', 401);
+      const chatId = url.pathname.split('/')[2];
+      const chat = await env.DB.prepare(`SELECT * FROM chats WHERE id = ?`).bind(chatId).first();
+      if (!chat) return err('Not found', 404);
+      if (chat.seller_uuid !== session.uuid && chat.buyer_uuid !== session.uuid) return err('Forbidden', 403);
+      const field = chat.seller_uuid === session.uuid ? 'archived_seller' : 'archived_buyer';
+      await env.DB.prepare(`UPDATE chats SET ${field} = 0 WHERE id = ?`).bind(chatId).run();
       return json({ ok: true });
     }
 
