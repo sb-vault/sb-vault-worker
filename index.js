@@ -448,6 +448,25 @@ export default {
       return json({ reports: results, notifications: notifs ? JSON.parse(notifs) : [] });
     }
 
+    // ── Skull texture proxy ────────────────────────────────────────────────
+    if (url.pathname.startsWith('/skull/') && request.method === 'GET') {
+      const hash = url.pathname.split('/')[2];
+      if (!hash || !/^[a-f0-9]+$/i.test(hash)) return err('Invalid hash', 400);
+      const texRes = await fetch(`https://textures.minecraft.net/texture/${hash}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      if (!texRes.ok) return new Response('Not found', { status: 404, headers: CORS });
+      const blob = await texRes.arrayBuffer();
+      return new Response(blob, {
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=86400',
+          ...CORS,
+        }
+      });
+    }
+
     return err('Not found', 404);
+    
   },
 };
