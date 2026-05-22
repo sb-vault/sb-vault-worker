@@ -1,5 +1,5 @@
 const CORS = {
-  'Access-Control-Allow-Origin': 'https://sb-vault.github.io',
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
@@ -253,7 +253,7 @@ export default {
     if (url.pathname === '/offers' && request.method === 'POST') {
       const body = await request.json();
       const { listingId, buyerIgn, amount, message } = body;
-      if (!listingId || !buyerIgn || !amount) return err('Missing required fields');
+      if (!listingId || !buyerIgn) return err('Missing required fields');
 
       const listing = await env.DB.prepare(
         `SELECT * FROM listings WHERE id = ? AND status = 'active'`
