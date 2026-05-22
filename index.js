@@ -179,7 +179,7 @@ export default {
       const body = await request.json();
       const { armourType, setName, pieces, cat, catLabel, price, proof, notes, ign: bodyIgn } = body;
 
-      if (!armourType || !pieces?.length || !price || price <= 0) {
+      if (!armourType || !pieces?.length) {
         return err('Missing required fields');
       }
 
@@ -191,14 +191,20 @@ export default {
       const id = generateId();
       const now = Date.now();
 
+      const { forOffers, pageId } = body;
+      // Try to add columns if they don't exist yet (D1 ignores errors on existing columns)
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN for_offers INTEGER DEFAULT 0`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN page_id TEXT`).run(); } catch(e) {}
+
       await env.DB.prepare(`
         INSERT INTO listings
-          (id, uuid, ign, armour_type, set_name, pieces, cat, cat_label, price, proof, notes, status, ts)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+          (id, uuid, ign, armour_type, set_name, pieces, cat, cat_label, price, proof, notes, status, ts, for_offers, page_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
       `).bind(
         id, finalUuid, finalIgn, armourType, setName || '',
         JSON.stringify(pieces), cat || 'exotic', catLabel || 'Exotic',
-        price, proof || '', notes || '', now,
+        price || 0, proof || '', notes || '', now,
+        forOffers ? 1 : 0, pageId || null,
       ).run();
 
       return json({ id, ok: true }, 201);
@@ -225,6 +231,21 @@ export default {
       if (!listing) return err('Not found', 404);
       if (listing.uuid !== session.uuid) return err('Forbidden', 403);
       await env.DB.prepare(`UPDATE listings SET status = 'deleted' WHERE id = ?`).bind(id).run();
+      return json({ ok: true });
+    }
+
+    // ── Listings: toggle for_offers ────────────────────────────────────
+    if (url.pathname.match(/^\/listings\/[a-f0-9]+\/offers$/) && request.method === 'PUT') {
+      const session = await getSession(request, env);
+      if (!session) return err('Unauthorised', 401);
+      const id = url.pathname.split('/')[2];
+      const listing = await env.DB.prepare(`SELECT uuid FROM listings WHERE id = ?`).bind(id).first();
+      if (!listing) return err('Not found', 404);
+      if (listing.uuid !== session.uuid) return err('Forbidden', 403);
+      const body = await request.json();
+      const forOffers = body.for_offers ? 1 : 0;
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN for_offers INTEGER DEFAULT 0`).run(); } catch(e) {}
+      await env.DB.prepare(`UPDATE listings SET for_offers = ? WHERE id = ?`).bind(forOffers, id).run();
       return json({ ok: true });
     }
 
