@@ -111,6 +111,7 @@ export default {
     if (url.pathname === '/users/preferences' && request.method === 'GET') {
       const session = await getSession(request, env);
       if (!session) return err('Unauthorised', 401);
+      try { await env.DB.prepare(`ALTER TABLE users ADD COLUMN preferences TEXT`).run(); } catch(e) {}
       const user = await env.DB.prepare(
         `SELECT preferences FROM users WHERE uuid = ?`
       ).bind(session.uuid).first();
@@ -125,6 +126,7 @@ export default {
     if (url.pathname === '/users/preferences' && request.method === 'PUT') {
       const session = await getSession(request, env);
       if (!session) return err('Unauthorised', 401);
+      try { await env.DB.prepare(`ALTER TABLE users ADD COLUMN preferences TEXT`).run(); } catch(e) {}
       const body = await request.json();
       await env.DB.prepare(
         `UPDATE users SET preferences = ? WHERE uuid = ?`
