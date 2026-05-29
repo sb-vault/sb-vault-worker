@@ -437,7 +437,74 @@ export default {
       });
     }
 
-    // ── Reports: submit ────────────────────────────────────────────────
+    
+    // ── Pages: get ────────────────────────────────────────────────────
+    if (url.pathname === '/pages' && request.method === 'GET') {
+      const uuid = url.searchParams.get('uuid');
+      if (!uuid) return err('Missing uuid');
+      try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, uuid TEXT, name TEXT, sort INTEGER DEFAULT 0, created_at INTEGER)`).run(); } catch(e) {}
+      const rows = await env.DB.prepare(`SELECT * FROM pages WHERE uuid = ? ORDER BY sort ASC, created_at ASC`).bind(uuid).all();
+      return json({ pages: rows.results || [] });
+    }
+
+    // ── Pages: create ─────────────────────────────────────────────────
+    if (url.pathname === '/pages' && request.method === 'POST') {
+      const session = await getSession(request, env);
+      if (!session) return err('Unauthorised', 401);
+      const body = await request.json();
+      const name = (body.name || '').trim().slice(0, 40);
+      if (!name) return err('Name required');
+      try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, uuid TEXT, name TEXT, sort INTEGER DEFAULT 0, created_at INTEGER)`).run(); } catch(e) {}
+      const id = generateId();
+      await env.DB.prepare(`INSERT INTO pages (id, uuid, name, sort, created_at) VALUES (?, ?, ?, ?, ?)`).bind(id, session.uuid, name, 0, Date.now()).run();
+      return json({ id, ok: true }, 201);
+    }
+
+    // ── Pages: delete ─────────────────────────────────────────────────
+    if (url.pathname.match(/^\/pages\/[a-z0-9]+$/) && request.method === 'DELETE') {
+      const session = await getSession(request, env);
+      if (!session) return err('Unauthorised', 401);
+      const id = url.pathname.split('/')[2];
+      try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, uuid TEXT, name TEXT, sort INTEGER DEFAULT 0, created_at INTEGER)`).run(); } catch(e) {}
+      const page = await env.DB.prepare(`SELECT uuid FROM pages WHERE id = ?`).bind(id).first();
+      if (!page) return err('Not found', 404);
+      if (page.uuid !== session.uuid) return err('Forbidden', 403);
+      await env.DB.prepare(`DELETE FROM pages WHERE id = ?`).bind(id).run();
+      return json({ ok: true });
+    }
+
+
+    // ── Listings: edit ────────────────────────────────────────────────
+    if (url.pathname.match(/^\/listings\/[a-z0-9]+\/edit$/) && request.method === 'PUT') {
+      const session = await getSession(request, env);
+      if (!session) return err('Unauthorised', 401);
+      const id = url.pathname.split('/')[2];
+      const listing = await env.DB.prepare(`SELECT uuid FROM listings WHERE id = ?`).bind(id).first();
+      if (!listing) return err('Not found', 404);
+      if (listing.uuid !== session.uuid) return err('Forbidden', 403);
+      const body = await request.json();
+      const fields = [];
+      const vals = [];
+      if (body.set_name !== undefined) { fields.push('set_name = ?'); vals.push(body.set_name); }
+      if (body.pieces !== undefined) { fields.push('pieces = ?'); vals.push(JSON.stringify(body.pieces)); }
+      if (body.for_offers !== undefined) { fields.push('for_offers = ?'); vals.push(body.for_offers ? 1 : 0); }
+      if (body.price !== undefined) { fields.push('price = ?'); vals.push(body.price || 0); }
+      if (body.notes !== undefined) { fields.push('notes = ?'); vals.push(body.notes || ''); }
+      if (body.current_offer !== undefined) { fields.push('current_offer = ?'); vals.push(body.current_offer || ''); }
+      if (body.current_offer_ign !== undefined) { fields.push('current_offer_ign = ?'); vals.push(body.current_offer_ign || ''); }
+      if (body.bought_for !== undefined) { fields.push('bought_for = ?'); vals.push(body.bought_for || ''); }
+      if (body.page_id !== undefined) { fields.push('page_id = ?'); vals.push(body.page_id || null); }
+      if (!fields.length) return err('Nothing to update');
+      // Add migration for new columns
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN current_offer TEXT`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN current_offer_ign TEXT`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN bought_for TEXT`).run(); } catch(e) {}
+      vals.push(id);
+      await env.DB.prepare(`UPDATE listings SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
+      return json({ ok: true });
+    }
+
+// ── Reports: submit ────────────────────────────────────────────────
     if (url.pathname === '/reports' && request.method === 'POST') {
       const body = await request.json();
       const { type, targetId, targetIgn, reason, notes, reporterIgn, reporterUuid } = body;
