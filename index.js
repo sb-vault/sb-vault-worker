@@ -193,21 +193,27 @@ export default {
       const id = generateId();
       const now = Date.now();
 
-      const { forOffers, pageId } = body;
+      const { forOffers, pageId, currentOffer, currentOfferIgn, boughtFor } = body;
       // Try to add columns if they don't exist yet (D1 ignores errors on existing columns)
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN for_offers INTEGER DEFAULT 0`).run(); } catch(e) {}
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN page_id TEXT`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN current_offer TEXT`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN current_offer_ign TEXT`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN bought_for TEXT`).run(); } catch(e) {}
 
       await env.DB.prepare(`
         INSERT INTO listings
-          (id, uuid, ign, armour_type, set_name, pieces, cat, cat_label, price, proof, notes, status, ts, for_offers, page_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+          (id, uuid, ign, armour_type, set_name, pieces, cat, cat_label, price, proof, notes, status, ts, for_offers, page_id, current_offer, current_offer_ign, bought_for)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)
       `).bind(
         id, finalUuid, finalIgn, armourType, setName || '',
         JSON.stringify(pieces), cat || 'exotic', catLabel || 'Exotic',
         price || 0, proof || '', notes || '', now,
         forOffers ? 1 : 0, pageId || null,
+        currentOffer || '', currentOfferIgn || '', boughtFor || ''
       ).run();
+
+
 
       return json({ id, ok: true }, 201);
     }
@@ -442,7 +448,8 @@ export default {
     if (url.pathname === '/pages' && request.method === 'GET') {
       const uuid = url.searchParams.get('uuid');
       if (!uuid) return err('Missing uuid');
-      try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, uuid TEXT, name TEXT, sort INTEGER DEFAULT 0, created_at INTEGER)`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE pages ADD COLUMN tab TEXT DEFAULT 'exotic'`).run(); } catch(e) {}
+      try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, uuid TEXT, name TEXT, tab TEXT DEFAULT 'exotic', sort INTEGER DEFAULT 0, created_at INTEGER)`).run(); } catch(e) {}
       const rows = await env.DB.prepare(`SELECT * FROM pages WHERE uuid = ? ORDER BY sort ASC, created_at ASC`).bind(uuid).all();
       return json({ pages: rows.results || [] });
     }
@@ -454,9 +461,12 @@ export default {
       const body = await request.json();
       const name = (body.name || '').trim().slice(0, 40);
       if (!name) return err('Name required');
-      try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, uuid TEXT, name TEXT, sort INTEGER DEFAULT 0, created_at INTEGER)`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE pages ADD COLUMN tab TEXT DEFAULT 'exotic'`).run(); } catch(e) {}
+      try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, uuid TEXT, name TEXT, tab TEXT DEFAULT 'exotic', sort INTEGER DEFAULT 0, created_at INTEGER)`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE pages ADD COLUMN tab TEXT DEFAULT 'exotic'`).run(); } catch(e) {}
+      const tab = (body.tab === 'seymour') ? 'seymour' : 'exotic';
       const id = generateId();
-      await env.DB.prepare(`INSERT INTO pages (id, uuid, name, sort, created_at) VALUES (?, ?, ?, ?, ?)`).bind(id, session.uuid, name, 0, Date.now()).run();
+      await env.DB.prepare(`INSERT INTO pages (id, uuid, name, tab, sort, created_at) VALUES (?, ?, ?, ?, ?, ?)`).bind(id, session.uuid, name, tab, 0, Date.now()).run();
       return json({ id, ok: true }, 201);
     }
 
@@ -465,7 +475,8 @@ export default {
       const session = await getSession(request, env);
       if (!session) return err('Unauthorised', 401);
       const id = url.pathname.split('/')[2];
-      try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, uuid TEXT, name TEXT, sort INTEGER DEFAULT 0, created_at INTEGER)`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE pages ADD COLUMN tab TEXT DEFAULT 'exotic'`).run(); } catch(e) {}
+      try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, uuid TEXT, name TEXT, tab TEXT DEFAULT 'exotic', sort INTEGER DEFAULT 0, created_at INTEGER)`).run(); } catch(e) {}
       const page = await env.DB.prepare(`SELECT uuid FROM pages WHERE id = ?`).bind(id).first();
       if (!page) return err('Not found', 404);
       if (page.uuid !== session.uuid) return err('Forbidden', 403);
