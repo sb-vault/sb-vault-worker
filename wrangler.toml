@@ -11,12 +11,12 @@ database_id = "e3adacfc-bc07-41cc-9496-4fa17108e846"
 binding = "SESSIONS"
 id = "39b5f3269c454e768759a0491a85719e"
 
+[vars]
+MCID_REDIRECT_URI = "https://sb-vault.github.io/"
+
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "sb-vault-images"
-
-[vars]
-MCID_REDIRECT_URI = "https://sb-vault.github.io/"
 
 [observability]
 enabled = true
