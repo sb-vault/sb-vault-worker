@@ -197,14 +197,16 @@ export default {
       // Try to add columns if they don't exist yet (D1 ignores errors on existing columns)
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN for_offers INTEGER DEFAULT 0`).run(); } catch(e) {}
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN page_id TEXT`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN scuffness TEXT`).run(); } catch(e) {}
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN current_offer TEXT`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN scuffness TEXT`).run(); } catch(e) {}
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN current_offer_ign TEXT`).run(); } catch(e) {}
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN bought_for TEXT`).run(); } catch(e) {}
 
       await env.DB.prepare(`
         INSERT INTO listings
-          (id, uuid, ign, armour_type, set_name, pieces, cat, cat_label, price, proof, notes, status, ts, for_offers, page_id, current_offer, current_offer_ign, bought_for)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)
+          (id, uuid, ign, armour_type, set_name, pieces, cat, cat_label, price, proof, notes, status, ts, for_offers, page_id, current_offer, current_offer_ign, bought_for, scuffness)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         id, finalUuid, finalIgn, armourType, setName || '',
         JSON.stringify(pieces), cat || 'exotic', catLabel || 'Exotic',
@@ -504,10 +506,12 @@ export default {
       if (body.current_offer !== undefined) { fields.push('current_offer = ?'); vals.push(body.current_offer || ''); }
       if (body.current_offer_ign !== undefined) { fields.push('current_offer_ign = ?'); vals.push(body.current_offer_ign || ''); }
       if (body.bought_for !== undefined) { fields.push('bought_for = ?'); vals.push(body.bought_for || ''); }
+      if (body.scuffness !== undefined) { fields.push('scuffness = ?'); vals.push(body.scuffness ? JSON.stringify(body.scuffness) : null); }
       if (body.page_id !== undefined) { fields.push('page_id = ?'); vals.push(body.page_id || null); }
       if (!fields.length) return err('Nothing to update');
       // Add migration for new columns
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN current_offer TEXT`).run(); } catch(e) {}
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN scuffness TEXT`).run(); } catch(e) {}
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN current_offer_ign TEXT`).run(); } catch(e) {}
       try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN bought_for TEXT`).run(); } catch(e) {}
       vals.push(id);
