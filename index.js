@@ -519,6 +519,23 @@ export default {
       return json({ ok: true });
     }
 
+
+    // ── Pages: rename ────────────────────────────────────────────────
+    if (url.pathname.match(/^\/pages\/[a-z0-9\-]+\/rename$/) && request.method === 'PUT') {
+      const session = await getSession(request, env);
+      if (!session) return err('Unauthorised', 401);
+      const id = url.pathname.split('/')[2];
+      try { await env.DB.prepare(`ALTER TABLE pages ADD COLUMN tab TEXT DEFAULT 'exotic'`).run(); } catch(e) {}
+      const page = await env.DB.prepare(`SELECT uuid FROM pages WHERE id = ?`).bind(id).first();
+      if (!page) return err('Not found', 404);
+      if (page.uuid !== session.uuid) return err('Forbidden', 403);
+      const body = await request.json();
+      const name = (body.name || '').trim().slice(0, 40);
+      if (!name) return err('Name required');
+      await env.DB.prepare(`UPDATE pages SET name = ? WHERE id = ?`).bind(name, id).run();
+      return json({ ok: true });
+    }
+
 // ── Reports: submit ────────────────────────────────────────────────
     if (url.pathname === '/reports' && request.method === 'POST') {
       const body = await request.json();
