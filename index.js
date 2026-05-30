@@ -212,7 +212,8 @@ export default {
         JSON.stringify(pieces), cat || 'exotic', catLabel || 'Exotic',
         price || 0, proof || '', notes || '', now,
         forOffers ? 1 : 0, pageId || null,
-        currentOffer || '', currentOfferIgn || '', boughtFor || ''
+        currentOffer || '', currentOfferIgn || '', boughtFor || '',
+        scuffness ? JSON.stringify(scuffness) : null
       ).run();
 
 
